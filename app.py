@@ -19,38 +19,46 @@ headers = {
 url = st.text_input("分析したい記事のURLを入力してください", placeholder="https://note.com/...")
 
 if st.button("分析開始"):
+    # 1. バリデーション（入力値のチェック）
     if not url:
         st.warning("URLを入力してください！")
+    elif not url.startswith(("http://", "https://")):
+        st.error("⚠️ セキュリティ保護のため、http:// または https:// から始まる有効なURLを入力してください。")
     else:
         try:
             with st.spinner('分析中...'):
-                # スクレイピング実行
-                response = requests.get(url, headers=headers, timeout=10)
+                # 2. ストリームモードで取得し、巨大ファイルを弾く（上限5MB）
+                # stream=True にすることで、中身を全部一気に読み込まないようにする
+                response = requests.get(url, headers=headers, timeout=10, stream=True)
+                
+                # Content-Length（ファイルサイズ）のチェック
+                content_length = response.headers.get('Content-Length')
+                if content_length and int(content_length) > 5 * 1024 * 1024:
+                    st.error("⚠️ 対象のページサイズが大きすぎるため、分析を中断しました（上限5MB）。")
+                    st.stop()
+                
+                # HTMLのテキストを取得
+                html_text = response.text
                 response.encoding = response.apparent_encoding  # 文字化け防止
                 
                 if response.status_code == 200:
-                    soup = BeautifulSoup(response.text, "html.parser")
+                    soup = BeautifulSoup(html_text, "html.parser")
                     
+                    # --- (ここから下は元のコードと同じです) ---
                     # タイトル取得
                     page_title = soup.title.string if soup.title else "タイトル不明"
                     
                     # 本文抽出（簡易的）
-                    text_content = soup.get_text().replace("\n", "").replace(" ", "")
+                    text_content = soup.get_text(separator=" ", strip=True)
                     char_count = len(text_content)
                     
-                    # 結果表示エリア
-                    st.success("取得成功！")
+                    st.success(f"✅ 分析完了！")
+                    st.subheader(f"📑 タイトル: {page_title}")
+                    st.write(f"**推定文字数**: 約 {char_count:,} 文字")
+                    st.markdown("---")
                     
-                    # 基本情報
-                    st.subheader("📊 基本データ")
-                    col1, col2 = st.columns(2)
-                    col1.metric("文字数（目安）", f"{char_count:,} 文字")
-                    col2.metric("ステータス", response.status_code)
-                    
-                    st.info(f"**記事タイトル**: {page_title}")
-                    
-                    # 見出し抽出 (H1, H2, H3)
-                    st.subheader("📑 見出し構成")
+                    # 見出しタグの抽出
+                    st.subheader("📌 見出し構成")
                     headings = soup.find_all(["h1", "h2", "h3"])
                     
                     if headings:
@@ -82,8 +90,11 @@ if st.button("分析開始"):
                 else:
                     st.error(f"アクセスできませんでした。ステータスコード: {response.status_code}")
                     
-        except Exception as e:
-            st.error(f"エラーが発生しました: {e}")
+        # 3. エラーハンドリングの細分化（何が起きたか明確にする）
+        except requests.exceptions.Timeout:
+            st.error("⚠️ 通信がタイムアウトしました。対象のサイトが重いか、アクセスがブロックされています。")
+        except requests.exceptions.RequestException as e:
+            st.error(f"⚠️ サイトへのアクセスに失敗しました。URLが正しいか確認してください。")
 
 st.markdown("---")
 st.caption("※ サイトの仕様によっては取得できない場合があります。スクレイピングは節度を持って行いましょう。")
