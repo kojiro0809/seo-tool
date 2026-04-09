@@ -44,7 +44,6 @@ if st.button("分析開始"):
                 if response.status_code == 200:
                     soup = BeautifulSoup(html_text, "html.parser")
                     
-                    # --- (ここから下は元のコードと同じです) ---
                     # タイトル取得
                     page_title = soup.title.string if soup.title else "タイトル不明"
                     
